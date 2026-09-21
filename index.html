@@ -95,10 +95,13 @@ input[type=text]{
 
 .overlay{
   position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center;
-  padding:20px; z-index:50;
+  padding:20px; padding-top:calc(20px + env(safe-area-inset-top,0px)); padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));
+  z-index:50; overflow-y:auto;
 }
+.overlay.hidden{display:none;}
 .picker-card{
   background:var(--card); border-radius:18px; padding:18px; max-width:420px; width:100%;
+  max-height:100%; overflow-y:auto; margin:auto;
 }
 .picker-title{font-weight:700; text-align:center; margin-bottom:4px;}
 .picker-sub{color:var(--sub); font-size:.8rem; text-align:center; margin-bottom:12px;}
