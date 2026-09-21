@@ -85,13 +85,29 @@ input[type=text]{
 .zukan-cell{
   aspect-ratio:1; border-radius:14px; background:var(--bg); border:2px solid var(--line);
   display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer;
-  font-weight:700; font-size:.8rem; color:var(--sub); transition:transform .1s;
+  font-weight:700; font-size:.72rem; color:var(--sub); transition:transform .1s; text-align:center; padding:4px;
 }
 .zukan-cell:active{transform:scale(.94);}
 .zukan-cell.got{background:var(--accent); border-color:var(--accent); color:#fff;}
 .zukan-cell .mark{font-size:1.3rem;}
 .zukan-count{text-align:center; font-weight:700; margin-bottom:12px; color:var(--accent);}
 .hidden{display:none;}
+
+.overlay{
+  position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center;
+  padding:20px; z-index:50;
+}
+.picker-card{
+  background:var(--card); border-radius:18px; padding:18px; max-width:420px; width:100%;
+}
+.picker-title{font-weight:700; text-align:center; margin-bottom:4px;}
+.picker-sub{color:var(--sub); font-size:.8rem; text-align:center; margin-bottom:12px;}
+.picker-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px;}
+.picker-btn{
+  background:var(--bg); border:2px solid var(--line); border-radius:12px; padding:10px 6px;
+  color:var(--ink); font-size:.82rem; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:4px;
+}
+.picker-btn .icon{font-size:1.4rem;}
 </style>
 </head>
 <body>
@@ -146,11 +162,27 @@ input[type=text]{
   </div>
 </div>
 
+<div class="overlay hidden" id="pickerOverlay">
+  <div class="picker-card">
+    <div class="picker-title">これは何のなかま？</div>
+    <div class="picker-sub">はじめて読み取ったバーコードだよ。えらんでね</div>
+    <div class="picker-grid" id="pickerGrid"></div>
+    <button class="secondary" id="pickerCancel" style="margin-top:10px;">あとで（キャンセル）</button>
+  </div>
+</div>
+
 <script>
-const NOTES = [
-  {name:'ド',freq:261.6}, {name:'レ',freq:293.7}, {name:'ミ',freq:329.6}, {name:'ファ',freq:349.2},
-  {name:'ソ',freq:392.0}, {name:'ラ',freq:440.0}, {name:'シ',freq:493.9},
-  {name:'高ド',freq:523.3}, {name:'高レ',freq:587.3}, {name:'高ミ',freq:659.3}
+const CATEGORIES = [
+  {name:'お菓子', icon:'🍬', note:'ド', freq:261.6},
+  {name:'飲み物', icon:'🥤', note:'レ', freq:293.7},
+  {name:'乳製品', icon:'🥛', note:'ミ', freq:329.6},
+  {name:'パン', icon:'🍞', note:'ファ', freq:349.2},
+  {name:'果物・野菜', icon:'🍎', note:'ソ', freq:392.0},
+  {name:'カップ麺・レトルト・冷凍食品', icon:'🍜', note:'ラ', freq:440.0},
+  {name:'文房具', icon:'✏️', note:'シ', freq:493.9},
+  {name:'本', icon:'📚', note:'高ド', freq:523.3},
+  {name:'おもちゃ', icon:'🧸', note:'高レ', freq:587.3},
+  {name:'日用品・その他', icon:'🧴', note:'高ミ', freq:659.3}
 ];
 
 // ---- storage (per-viewer, local only) ----
@@ -159,12 +191,13 @@ function loadState(){
     const raw = localStorage.getItem('barcode-toy-state');
     if(raw) return JSON.parse(raw);
   }catch(e){}
-  return { collected: [], level: 1 };
+  return { collected: [], level: 1, codeCategories: {} };
 }
 function saveState(){
   try{ localStorage.setItem('barcode-toy-state', JSON.stringify(state)); }catch(e){}
 }
 let state = loadState();
+if(!state.codeCategories) state.codeCategories = {};
 
 // ---- audio ----
 let audioCtx = null;
@@ -205,12 +238,6 @@ function playFanfare(){
   });
 }
 
-function codeToNoteIndex(code){
-  let h = 0;
-  for(let i=0;i<code.length;i++){ h = (h*31 + code.charCodeAt(i)) >>> 0; }
-  return h % NOTES.length;
-}
-
 // ---- tabs ----
 const tabGame = document.getElementById('tabGame');
 const tabZukan = document.getElementById('tabZukan');
@@ -223,15 +250,15 @@ tabZukan.addEventListener('click', () => { tabZukan.classList.add('active'); tab
 function renderZukan(){
   const grid = document.getElementById('zukanGrid');
   grid.innerHTML = '';
-  NOTES.forEach((n, idx) => {
+  CATEGORIES.forEach((c, idx) => {
     const got = state.collected.includes(idx);
     const cell = document.createElement('div');
     cell.className = 'zukan-cell' + (got ? ' got' : '');
-    cell.innerHTML = got ? `<div class="mark">🎵</div><div>${n.name}</div>` : `<div class="mark">？</div>`;
-    if(got) cell.addEventListener('click', () => playTone(n.freq));
+    cell.innerHTML = got ? `<div class="mark">${c.icon}</div><div>${c.name}</div>` : `<div class="mark">？</div>`;
+    if(got) cell.addEventListener('click', () => playTone(c.freq));
     grid.appendChild(cell);
   });
-  document.getElementById('zukanCount').textContent = `${state.collected.length} / ${NOTES.length} 集めたよ`;
+  document.getElementById('zukanCount').textContent = `${state.collected.length} / ${CATEGORIES.length} 集めたよ`;
 }
 
 // ---- challenge ----
@@ -241,7 +268,7 @@ function newChallenge(){
   const len = lengthForLevel(state.level);
   const allowRepeat = state.level >= 3;
   const target = [];
-  const pool = [...Array(NOTES.length).keys()];
+  const pool = [...Array(CATEGORIES.length).keys()];
   for(let i=0;i<len;i++){
     let idx;
     if(allowRepeat){ idx = pool[Math.floor(Math.random()*pool.length)]; }
@@ -261,14 +288,14 @@ function renderChallenge(){
   challenge.target.forEach((idx, i) => {
     const chip = document.createElement('div');
     chip.className = 'note-chip' + (i < challenge.progress ? ' done' : (i === challenge.progress ? ' next' : ''));
-    chip.textContent = NOTES[idx].name;
+    chip.textContent = CATEGORIES[idx].icon;
     row.appendChild(chip);
   });
   document.getElementById('challengeMsg').textContent = 'このお題の順番でスキャンしよう！';
 }
-function handleChallengeInput(noteIdx){
+function handleChallengeInput(idx){
   const msg = document.getElementById('challengeMsg');
-  if(noteIdx === challenge.target[challenge.progress]){
+  if(idx === challenge.target[challenge.progress]){
     challenge.progress++;
     if(challenge.progress >= challenge.target.length){
       msg.textContent = '🎉 クリア！つぎのレベルへ！';
@@ -295,28 +322,58 @@ const statusEl = document.getElementById('status');
 const logEl = document.getElementById('log');
 const manualInput = document.getElementById('manualInput');
 const manualBtn = document.getElementById('manualBtn');
+const pickerOverlay = document.getElementById('pickerOverlay');
+const pickerGrid = document.getElementById('pickerGrid');
 
 let stream = null, detector = null, rafId = null, lastCode = null, lastTime = 0, zxingReader = null;
+let awaitingCategory = false;
 
-function addLog(code, name){
+function addLog(code, cat){
   const emptyMsg = logEl.querySelector('.empty');
   if(emptyMsg) emptyMsg.remove();
   const item = document.createElement('div');
   item.className = 'log-item';
-  item.innerHTML = `<span class="code">${code.length>28?code.slice(0,28)+'…':code}</span><span class="tone">♪ ${name}</span>`;
+  item.innerHTML = `<span class="code">${cat.icon} ${cat.name}</span><span class="tone">♪ ${cat.note}</span>`;
   logEl.prepend(item);
+}
+
+function finalizeDetected(code, idx){
+  const cat = CATEGORIES[idx];
+  playTone(cat.freq);
+  addLog(code, cat);
+  if(!state.collected.includes(idx)){ state.collected.push(idx); }
+  state.codeCategories[code] = idx;
+  saveState();
+  handleChallengeInput(idx);
+}
+
+function showPicker(code){
+  awaitingCategory = true;
+  pickerGrid.innerHTML = '';
+  CATEGORIES.forEach((c, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'picker-btn';
+    btn.innerHTML = `<span class="icon">${c.icon}</span><span>${c.name}</span>`;
+    btn.addEventListener('click', () => {
+      pickerOverlay.classList.add('hidden');
+      awaitingCategory = false;
+      finalizeDetected(code, idx);
+    });
+    pickerGrid.appendChild(btn);
+  });
+  pickerOverlay.classList.remove('hidden');
 }
 
 function handleDetected(code){
   const now = Date.now();
+  if(awaitingCategory) return;
   if(code === lastCode && now - lastTime < 1500) return;
   lastCode = code; lastTime = now;
-  const idx = codeToNoteIndex(code);
-  const note = NOTES[idx];
-  playTone(note.freq);
-  addLog(code, note.name);
-  if(!state.collected.includes(idx)){ state.collected.push(idx); saveState(); }
-  handleChallengeInput(idx);
+  if(code in state.codeCategories){
+    finalizeDetected(code, state.codeCategories[code]);
+  }else{
+    showPicker(code);
+  }
 }
 
 async function startCamera(){
@@ -373,6 +430,13 @@ startBtn.addEventListener('click', startCamera);
 stopBtn.addEventListener('click', stopCamera);
 manualBtn.addEventListener('click', () => { const v = manualInput.value.trim(); if(v) handleDetected(v); });
 manualInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') manualBtn.click(); });
+
+function closePicker(){
+  pickerOverlay.classList.add('hidden');
+  awaitingCategory = false;
+}
+document.getElementById('pickerCancel').addEventListener('click', closePicker);
+pickerOverlay.addEventListener('click', (e) => { if(e.target === pickerOverlay) closePicker(); });
 
 newChallenge();
 renderZukan();
