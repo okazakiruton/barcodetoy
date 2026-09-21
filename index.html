@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>バーコードTOY</title>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <style>
 :root{
   --bg:#fdf6ec; --card:#ffffff; --ink:#2b2320; --sub:#8a7a6d;
@@ -295,7 +296,7 @@ const logEl = document.getElementById('log');
 const manualInput = document.getElementById('manualInput');
 const manualBtn = document.getElementById('manualBtn');
 
-let stream = null, detector = null, rafId = null, lastCode = null, lastTime = 0;
+let stream = null, detector = null, rafId = null, lastCode = null, lastTime = 0, zxingReader = null;
 
 function addLog(code, name){
   const emptyMsg = logEl.querySelector('.empty');
@@ -334,9 +335,22 @@ async function startCamera(){
       statusEl.textContent = 'バーコードにカメラを向けてね';
       startBtn.disabled = true; stopBtn.disabled = false;
       scanLoop();
-    }catch(e){ statusEl.textContent = 'このブラウザは読み取りに対応していません。手入力で試してね'; }
+      return;
+    }catch(e){ /* 失敗したらZXingにフォールバック */ }
+  }
+  if(window.ZXing){
+    try{
+      zxingReader = new ZXing.BrowserMultiFormatReader();
+      statusEl.textContent = 'バーコードにカメラを向けてね';
+      startBtn.disabled = true; stopBtn.disabled = false;
+      zxingReader.decodeFromStream(stream, video, (result, err) => {
+        if(result) handleDetected(result.getText());
+      });
+    }catch(e){
+      statusEl.textContent = '読み取りを開始できませんでした。手入力で試してね';
+    }
   }else{
-    statusEl.textContent = 'このブラウザはバーコード読み取りに非対応です。手入力で試してね（Android版Chrome推奨）';
+    statusEl.textContent = '読み取り機能を読み込めませんでした。手入力で試してね';
   }
 }
 async function scanLoop(){
@@ -349,6 +363,7 @@ async function scanLoop(){
 }
 function stopCamera(){
   if(rafId){ cancelAnimationFrame(rafId); rafId = null; }
+  if(zxingReader){ try{ zxingReader.reset(); }catch(e){} zxingReader = null; }
   if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
   video.srcObject = null; detector = null;
   startBtn.disabled = false; stopBtn.disabled = true;
