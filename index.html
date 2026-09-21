@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>バーコードTOY</title>
+<style>
+:root{
+  --bg:#fdf6ec; --card:#ffffff; --ink:#2b2320; --sub:#8a7a6d;
+  --accent:#ff8a5c; --accent2:#5ec9c0; --line:#eee0d2; --ok:#5cb85c;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1c1712; --card:#26201a; --ink:#f2e9dd; --sub:#b7a794;
+    --accent:#ff9d70; --accent2:#7fded4; --line:#3a3126; --ok:#7fd77f;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1c1712; --card:#26201a; --ink:#f2e9dd; --sub:#b7a794;
+  --accent:#ff9d70; --accent2:#7fded4; --line:#3a3126; --ok:#7fd77f;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px); height:100%;}
+*{box-sizing:border-box;}
+body{
+  margin:0; min-height:100%; background:var(--bg); color:var(--ink);
+  font-family:"Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  display:flex; justify-content:center; padding:20px 16px 40px;
+}
+.wrap{width:100%; max-width:480px;}
+h1{font-size:1.25rem; margin:4px 0 2px; text-align:center;}
+p.desc{color:var(--sub); text-align:center; font-size:.82rem; margin:0 0 14px;}
+.tabs{display:flex; gap:8px; margin-bottom:14px;}
+.tab{
+  flex:1; text-align:center; padding:10px; border-radius:12px; font-weight:700;
+  background:var(--card); border:1px solid var(--line); color:var(--sub); cursor:pointer; font-size:.9rem;
+}
+.tab.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+.card{
+  background:var(--card); border:1px solid var(--line); border-radius:18px;
+  padding:16px; margin-bottom:14px;
+}
+video{
+  width:100%; border-radius:12px; background:#000; display:block;
+  aspect-ratio:4/3; object-fit:cover;
+}
+.btnrow{display:flex; gap:10px; margin-top:12px;}
+button{
+  flex:1; border:none; border-radius:12px; padding:12px 10px;
+  font-size:.95rem; font-weight:700; cursor:pointer; color:#fff;
+  background:var(--accent); transition:transform .1s;
+}
+button.secondary{background:var(--accent2);}
+button:active{transform:scale(.96);}
+button:disabled{opacity:.4; cursor:default;}
+.status{text-align:center; font-size:.85rem; color:var(--sub); margin-top:10px; min-height:1.2em;}
+.manual{display:flex; gap:8px;}
+input[type=text]{
+  flex:1; border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+  background:var(--bg); color:var(--ink); font-size:.95rem;
+}
+.log{max-height:160px; overflow-y:auto;}
+.log-item{display:flex; justify-content:space-between; align-items:center; padding:8px 4px; border-bottom:1px solid var(--line); font-size:.85rem;}
+.log-item:last-child{border-bottom:none;}
+.code{font-family:monospace; word-break:break-all;}
+.tone{color:var(--accent); font-weight:700; white-space:nowrap; margin-left:8px;}
+.empty{color:var(--sub); text-align:center; font-size:.85rem; padding:8px 0;}
+
+.challenge-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+.level-badge{background:var(--accent2); color:#fff; font-size:.75rem; font-weight:700; padding:3px 10px; border-radius:999px;}
+.target-row{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin:6px 0 4px;}
+.note-chip{
+  width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:.85rem; background:var(--bg); border:2px solid var(--line); color:var(--sub);
+  transition:all .2s;
+}
+.note-chip.done{background:var(--ok); border-color:var(--ok); color:#fff; transform:scale(1.05);}
+.note-chip.next{border-color:var(--accent); color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);}
+.challenge-msg{text-align:center; font-size:.85rem; color:var(--sub); margin-top:8px;}
+
+.zukan-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:10px;}
+.zukan-cell{
+  aspect-ratio:1; border-radius:14px; background:var(--bg); border:2px solid var(--line);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer;
+  font-weight:700; font-size:.8rem; color:var(--sub); transition:transform .1s;
+}
+.zukan-cell:active{transform:scale(.94);}
+.zukan-cell.got{background:var(--accent); border-color:var(--accent); color:#fff;}
+.zukan-cell .mark{font-size:1.3rem;}
+.zukan-count{text-align:center; font-weight:700; margin-bottom:12px; color:var(--accent);}
+.hidden{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎵 バーコードTOY</h1>
+  <p class="desc">バーコードを読み取って音を鳴らそう。お題に挑戦したり、音を集めよう！</p>
+
+  <div class="tabs">
+    <div class="tab active" id="tabGame">🎮 ゲーム</div>
+    <div class="tab" id="tabZukan">📖 図鑑</div>
+  </div>
+
+  <div id="gameView">
+    <div class="card">
+      <div class="challenge-head">
+        <div style="font-weight:700;">お題メロディー</div>
+        <div class="level-badge" id="levelBadge">Lv.1</div>
+      </div>
+      <div class="target-row" id="targetRow"></div>
+      <div class="challenge-msg" id="challengeMsg">このお題の順番でスキャンしよう！</div>
+    </div>
+
+    <div class="card">
+      <video id="video" playsinline muted></video>
+      <div class="btnrow">
+        <button id="startBtn">📷 カメラを起動</button>
+        <button id="stopBtn" class="secondary" disabled>停止</button>
+      </div>
+      <div class="status" id="status">「カメラを起動」を押してね</div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:.85rem;color:var(--sub);margin-bottom:8px;">カメラが使えない時は、ここに手入力して音を鳴らせるよ</div>
+      <div class="manual">
+        <input type="text" id="manualInput" placeholder="バーコードの数字などを入力">
+        <button id="manualBtn" style="flex:0 0 auto;">🔊 鳴らす</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:6px;">読み取り履歴</div>
+      <div class="log" id="log"><div class="empty">まだ何も読み取っていません</div></div>
+    </div>
+  </div>
+
+  <div id="zukanView" class="hidden">
+    <div class="card">
+      <div class="zukan-count" id="zukanCount">0 / 10 集めたよ</div>
+      <div class="zukan-grid" id="zukanGrid"></div>
+      <div class="status">タップすると音を鳴らせるよ</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const NOTES = [
+  {name:'ド',freq:261.6}, {name:'レ',freq:293.7}, {name:'ミ',freq:329.6}, {name:'ファ',freq:349.2},
+  {name:'ソ',freq:392.0}, {name:'ラ',freq:440.0}, {name:'シ',freq:493.9},
+  {name:'高ド',freq:523.3}, {name:'高レ',freq:587.3}, {name:'高ミ',freq:659.3}
+];
+
+// ---- storage (per-viewer, local only) ----
+function loadState(){
+  try{
+    const raw = localStorage.getItem('barcode-toy-state');
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return { collected: [], level: 1 };
+}
+function saveState(){
+  try{ localStorage.setItem('barcode-toy-state', JSON.stringify(state)); }catch(e){}
+}
+let state = loadState();
+
+// ---- audio ----
+let audioCtx = null;
+function getAudioCtx(){
+  if(!audioCtx){
+    try{ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ return null; }
+  }
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+function playTone(freq){
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.type='triangle'; osc.frequency.setValueAtTime(freq, now);
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.25, now+0.02);
+  gain.gain.exponentialRampToValueAtTime(0.001, now+0.35);
+  osc.connect(gain).connect(ctx.destination); osc.start(now); osc.stop(now+0.4);
+  const osc2 = ctx.createOscillator(), gain2 = ctx.createGain();
+  osc2.type='sine'; osc2.frequency.setValueAtTime(freq*2, now+0.03);
+  gain2.gain.setValueAtTime(0, now+0.03);
+  gain2.gain.linearRampToValueAtTime(0.12, now+0.05);
+  gain2.gain.exponentialRampToValueAtTime(0.001, now+0.25);
+  osc2.connect(gain2).connect(ctx.destination); osc2.start(now+0.03); osc2.stop(now+0.3);
+}
+function playFanfare(){
+  const ctx = getAudioCtx(); if(!ctx) return;
+  [523.3,659.3,784.0,1046.6].forEach((f,i)=>{
+    const t = ctx.currentTime + i*0.12;
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type='triangle'; osc.frequency.setValueAtTime(f, t);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.2, t+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, t+0.3);
+    osc.connect(gain).connect(ctx.destination); osc.start(t); osc.stop(t+0.32);
+  });
+}
+
+function codeToNoteIndex(code){
+  let h = 0;
+  for(let i=0;i<code.length;i++){ h = (h*31 + code.charCodeAt(i)) >>> 0; }
+  return h % NOTES.length;
+}
+
+// ---- tabs ----
+const tabGame = document.getElementById('tabGame');
+const tabZukan = document.getElementById('tabZukan');
+const gameView = document.getElementById('gameView');
+const zukanView = document.getElementById('zukanView');
+tabGame.addEventListener('click', () => { tabGame.classList.add('active'); tabZukan.classList.remove('active'); gameView.classList.remove('hidden'); zukanView.classList.add('hidden'); });
+tabZukan.addEventListener('click', () => { tabZukan.classList.add('active'); tabGame.classList.remove('active'); zukanView.classList.remove('hidden'); gameView.classList.add('hidden'); renderZukan(); });
+
+// ---- zukan ----
+function renderZukan(){
+  const grid = document.getElementById('zukanGrid');
+  grid.innerHTML = '';
+  NOTES.forEach((n, idx) => {
+    const got = state.collected.includes(idx);
+    const cell = document.createElement('div');
+    cell.className = 'zukan-cell' + (got ? ' got' : '');
+    cell.innerHTML = got ? `<div class="mark">🎵</div><div>${n.name}</div>` : `<div class="mark">？</div>`;
+    if(got) cell.addEventListener('click', () => playTone(n.freq));
+    grid.appendChild(cell);
+  });
+  document.getElementById('zukanCount').textContent = `${state.collected.length} / ${NOTES.length} 集めたよ`;
+}
+
+// ---- challenge ----
+let challenge = { target: [], progress: 0 };
+function lengthForLevel(lv){ return lv <= 1 ? 3 : lv === 2 ? 4 : 5; }
+function newChallenge(){
+  const len = lengthForLevel(state.level);
+  const allowRepeat = state.level >= 3;
+  const target = [];
+  const pool = [...Array(NOTES.length).keys()];
+  for(let i=0;i<len;i++){
+    let idx;
+    if(allowRepeat){ idx = pool[Math.floor(Math.random()*pool.length)]; }
+    else{
+      const pos = Math.floor(Math.random()*pool.length);
+      idx = pool.splice(pos,1)[0];
+    }
+    target.push(idx);
+  }
+  challenge = { target, progress: 0 };
+  renderChallenge();
+}
+function renderChallenge(){
+  document.getElementById('levelBadge').textContent = `Lv.${state.level}`;
+  const row = document.getElementById('targetRow');
+  row.innerHTML = '';
+  challenge.target.forEach((idx, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'note-chip' + (i < challenge.progress ? ' done' : (i === challenge.progress ? ' next' : ''));
+    chip.textContent = NOTES[idx].name;
+    row.appendChild(chip);
+  });
+  document.getElementById('challengeMsg').textContent = 'このお題の順番でスキャンしよう！';
+}
+function handleChallengeInput(noteIdx){
+  const msg = document.getElementById('challengeMsg');
+  if(noteIdx === challenge.target[challenge.progress]){
+    challenge.progress++;
+    if(challenge.progress >= challenge.target.length){
+      msg.textContent = '🎉 クリア！つぎのレベルへ！';
+      playFanfare();
+      state.level = Math.min(state.level + 1, 3);
+      saveState();
+      setTimeout(newChallenge, 900);
+    }else{
+      msg.textContent = 'いいね！つづけて！';
+      renderChallenge();
+    }
+  }else{
+    challenge.progress = 0;
+    msg.textContent = 'ちがう音だったよ。さいしょから！';
+    renderChallenge();
+  }
+}
+
+// ---- scan handling ----
+const video = document.getElementById('video');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusEl = document.getElementById('status');
+const logEl = document.getElementById('log');
+const manualInput = document.getElementById('manualInput');
+const manualBtn = document.getElementById('manualBtn');
+
+let stream = null, detector = null, rafId = null, lastCode = null, lastTime = 0;
+
+function addLog(code, name){
+  const emptyMsg = logEl.querySelector('.empty');
+  if(emptyMsg) emptyMsg.remove();
+  const item = document.createElement('div');
+  item.className = 'log-item';
+  item.innerHTML = `<span class="code">${code.length>28?code.slice(0,28)+'…':code}</span><span class="tone">♪ ${name}</span>`;
+  logEl.prepend(item);
+}
+
+function handleDetected(code){
+  const now = Date.now();
+  if(code === lastCode && now - lastTime < 1500) return;
+  lastCode = code; lastTime = now;
+  const idx = codeToNoteIndex(code);
+  const note = NOTES[idx];
+  playTone(note.freq);
+  addLog(code, note.name);
+  if(!state.collected.includes(idx)){ state.collected.push(idx); saveState(); }
+  handleChallengeInput(idx);
+}
+
+async function startCamera(){
+  statusEl.textContent = 'カメラを起動中…';
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream; await video.play();
+  }catch(e){
+    statusEl.textContent = 'カメラを使用できませんでした。手入力で試してね';
+    return;
+  }
+  if('BarcodeDetector' in window){
+    try{
+      const formats = await window.BarcodeDetector.getSupportedFormats();
+      detector = new window.BarcodeDetector({ formats });
+      statusEl.textContent = 'バーコードにカメラを向けてね';
+      startBtn.disabled = true; stopBtn.disabled = false;
+      scanLoop();
+    }catch(e){ statusEl.textContent = 'このブラウザは読み取りに対応していません。手入力で試してね'; }
+  }else{
+    statusEl.textContent = 'このブラウザはバーコード読み取りに非対応です。手入力で試してね（Android版Chrome推奨）';
+  }
+}
+async function scanLoop(){
+  if(!detector || !stream) return;
+  try{
+    const codes = await detector.detect(video);
+    if(codes.length > 0) handleDetected(codes[0].rawValue);
+  }catch(e){}
+  rafId = requestAnimationFrame(() => setTimeout(scanLoop, 250));
+}
+function stopCamera(){
+  if(rafId){ cancelAnimationFrame(rafId); rafId = null; }
+  if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null; detector = null;
+  startBtn.disabled = false; stopBtn.disabled = true;
+  statusEl.textContent = '停止しました';
+}
+startBtn.addEventListener('click', startCamera);
+stopBtn.addEventListener('click', stopCamera);
+manualBtn.addEventListener('click', () => { const v = manualInput.value.trim(); if(v) handleDetected(v); });
+manualInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') manualBtn.click(); });
+
+newChallenge();
+renderZukan();
+</script>
+</body>
+</html>
